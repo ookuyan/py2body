@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
-__all__ = ['sun', 'earth', 'moon', 'jupiter',
-           'ecc_anomaly', 'eci2perif', 'elem2rv']
+__all__ = ['sun', 'earth', 'moon', 'jupiter', 'ecc_anomaly',
+           'eci2perif', 'elem2rv', 'tle2elem']
+
+import datetime
 
 from numpy import sin, cos, tan, arctan, sqrt, array
-from numpy import deg2rad, pi, transpose, dot
+from numpy import deg2rad, rad2deg, pi, transpose, dot
 
 # https://nssdc.gsfc.nasa.gov/planetary/planetfact.html
 
@@ -65,6 +67,11 @@ def ecc_anomaly(arr, method, eps=1e-8, max_iter=100):
     return 2 * arctan(sqrt((1 - e) / (1 + e)) * tan(ta / 2))
 
 
+def true_anomaly(arr):
+    E, e = arr
+    return 2 * arctan(sqrt((1 + e) / (1 - e)) * tan(E / 2))
+
+
 def eci2perif(lan, aop, i):
     u = [
         -sin(lan) * cos(i) * sin(aop) + cos(lan) * cos(aop),
@@ -108,3 +115,76 @@ def elem2rv(elements, mu=earth['mu']):
     period = 2 * pi * sqrt(a ** 3 / mu)
 
     return position, velocity, period
+
+
+def calc_epoch(epoch, year_prefix='20'):
+    year = int(year_prefix + epoch[:2])
+
+    epoch = epoch[2:].split('.')
+
+    day_of_year = int(epoch[0]) - 1
+    hour = float('0.' + epoch[1]) * 24.0
+    date = datetime.date(year, 1, 1) + datetime.timedelta(day_of_year)
+
+    month = float(date.month)
+    day = float(date.day)
+
+    return year, month, day, hour
+
+
+def tle2elem(tle, mu=earth['mu']):
+    line0, line1, line2 = tle
+
+    line0 = line0.strip()
+    line1 = line1.strip().split()
+    line2 = line2.strip().split()
+
+    # epochs
+    epoch = line1[3]
+    year, month, day, hour = calc_epoch(epoch)
+
+    # inclination
+    i = float(line2[2])
+
+    # right ascention of ascending node / longitude of ascending node
+    lan = float(line2[2])
+
+    # eccentricity
+    e = float('0.' + line2[4])
+
+    # argument of periapsis
+    aop = float(line2[5])
+
+    # mean anomaly
+    ma = deg2rad(float(line2[6]))
+
+    # mean motion [revs / day]
+    mean_motion = float(line2[7])
+
+    # period [seconds]
+    period = 1 / mean_motion * 86400
+
+    # semi major axis
+    a = (period**2 * mu / 4.0 / pi**2) ** (1 / 3)
+
+    # eccentric anomaly
+    E = ecc_anomaly([ma, e], 'newton')
+
+    # true anomaly
+    ta = true_anomaly([E, e])
+
+    # magnitude of radius vector
+    # r_mag = a * (1 - e * cos(E))
+
+    elements = dict()
+    elements['name'] = line0
+    elements['a'] = a
+    elements['e'] = e
+    elements['i'] = i
+    elements['true_anomaly'] = rad2deg(ta)
+    elements['argument_of_periapsis'] = aop
+    elements['longitude_of_ascending_node'] = lan
+    elements['period'] = period
+    elements['epoch'] = {'year': year, 'month': month, 'day': day, 'hour': hour}
+
+    return elements

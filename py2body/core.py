@@ -10,34 +10,56 @@ from .helper import *
 
 class Body(object):
 
-    def __init__(self, name='Sat', elements=None, position=None,
-                 velocity=None, mu=None, mass=None):
+    def __init__(self, **args):
+        self.name = 'Satellite'
+        self.mu = earth['mu']
+        self.mass = 0.0
 
-        self.name = name
-        self.mu = mu
+        self.position = None
+        self.velocity = None
 
-        if mu is None:
-            self.mu = earth['mu']
-
+        self.elements = None
         self.period = None
 
-        if elements is None:
-            self.position = position
-            self.velocity = velocity
+        self.tle = None
 
-            if position is None:
+        if 'name' in args:
+            self.name = args['name']
+
+        if 'mu' in args:
+            self.mu = args['mu']
+
+        if 'mass' in args:
+            self.mass = args['mass']
+
+        if 'tle' in args:
+            self.tle = args['tle']
+            self.elements = tle2elem(self.tle, self.mu)
+
+            self.position, self.velocity, self.period = \
+                elem2rv(elements=self.elements, mu=self.mu)
+
+            self.name = self.elements['name']
+
+        if 'elements' in args:
+            self.position, self.velocity, self.period = \
+                elem2rv(elements=args['elements'], mu=self.mu)
+
+            self.elements = args['elements']
+
+        if 'position' in args:
+            self.position = args['position']
+        else:
+            if self.position is None:
                 r_mag = earth['radius'] + 408
                 self.position = [r_mag, 0, 0]
 
-            if velocity is None:
-                v_mag = np.sqrt(earth['mu'] / self.position[0])  # circular
-                self.velocity = [0, v_mag, 0]
+        if 'velocity' in args:
+            self.velocity = args['velocity']
         else:
-            self.position, self.velocity, self.period = \
-                elem2rv(elements=elements, mu=self.mu)
-
-        if mass is None:
-            self.mass = 0.0
+            if self.velocity is None:
+                v_mag = np.sqrt(self.mu / self.position[0])  # circular
+                self.velocity = [0, v_mag, 0]
 
 
 class Orbit(object):
