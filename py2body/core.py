@@ -33,26 +33,8 @@ class Body(object):
                 v_mag = np.sqrt(earth['mu'] / self.position[0])  # circular
                 self.velocity = [0, v_mag, 0]
         else:
-            a, e = elements['a'], elements['e']
-            i = np.deg2rad(elements['i'])
-            ta = np.deg2rad(elements['true_anomaly'])
-            aop = np.deg2rad(elements['argument_of_periapsis'])
-            lan = np.deg2rad(elements['longitude_of_ascending_node'])
-
-            E = ecc_anomaly([ta, e], 'tae')
-
-            r_norm = a * (1 - e**2) / (1 + e * np.cos(ta))
-
-            r_perif = r_norm * np.array([np.cos(ta), np.sin(ta), 0])
-            v_perif = np.sqrt(self.mu * a) / r_norm
-            v_perif *= np.array([-np.sin(E), np.cos(E) * np.sqrt(1 - e**2), 0])
-
-            perif2eci = np.transpose(eci2perif(lan, aop, i))
-
-            self.position = np.dot(perif2eci, r_perif).tolist()
-            self.velocity = np.dot(perif2eci, v_perif).tolist()
-
-            self.period = 2 * np.pi * np.sqrt(a**3 / self.mu)
+            self.position, self.velocity, self.period = \
+                elem2rv(elements=elements, mu=self.mu)
 
         if mass is None:
             self.mass = 0.0
@@ -65,7 +47,7 @@ class Orbit(object):
         self.mu = mu
 
         if mu is None:
-            self.mu = earth['mu']
+            self.mu = body.mu
 
         self.dt = dt
         self.step = 0

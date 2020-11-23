@@ -2,6 +2,9 @@
 
 __all__ = ['plot_orbit', 'animate_orbit']
 
+import os
+import pathlib
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -13,16 +16,16 @@ from PIL import Image
 # plt.style.use('dark_background')
 
 textures = {
-    'sun': './py2body/data/sun.jpg',
-    'mercury': './py2body/data/mercury.jpg',
-    'venus': './py2body/data/venus_atmosphere.jpg',
-    'earth': './py2body/data/earth_day.jpg',
-    'moon': './py2body/data/moon.jpg',
-    'mars': './py2body/data/mars.jpg',
-    'jupiter': './py2body/data/jupiter.jpg',
-    'saturn': './py2body/data/saturn.jpg',
-    'uranus': './py2body/data/uranus.jpg',
-    'neptune': './py2body/data/neptune.jpg',
+    'sun': 'data/sun.jpg',
+    'mercury': 'data/mercury.jpg',
+    'venus': 'data/venus_atmosphere.jpg',
+    'earth': 'data/earth_day.jpg',
+    'moon': 'data/moon.jpg',
+    'mars': 'data/mars.jpg',
+    'jupiter': 'data/jupiter.jpg',
+    'saturn': 'data/saturn.jpg',
+    'uranus': 'data/uranus.jpg',
+    'neptune': 'data/neptune.jpg',
     'wire_frame': 'wire_frame',
     'surface': 'surface'
 }
@@ -53,7 +56,10 @@ def create_sphere(ax, radius=1, position=None, texture='wire_frame',
         except KeyError:
             pass
 
-        img = Image.open(texture)
+        p = pathlib.Path(__file__).parent.absolute()
+        filename = os.path.join(*p.parts[0:-1], 'py2body', texture)
+
+        img = Image.open(filename)
         img = np.array(
             img.resize([int(d / texture_bin) for d in img.size])) / 256.
 
@@ -86,10 +92,10 @@ def create_sphere(ax, radius=1, position=None, texture='wire_frame',
             ax.plot_surface(x, y, z, cmap=color, alpha=texture_alpha)
 
     if quiver:
-        lq = radius * 2
-        _x, _y, _z = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-        _u, _v, _w = [[lq, 0, 0], [0, lq, 0], [0, 0, lq]]
-        ax.quiver(_x, _y, _z, _u, _v, _w, color='k', alpha=0.5)
+        r = 2 * radius
+        ax.quiver(0, 0, 0, r, 0, 0, color='k', alpha=0.5)
+        ax.quiver(0, 0, 0, 0, r, 0, color='k', alpha=0.5)
+        ax.quiver(0, 0, 0, 0, 0, r, color='k', alpha=0.5)
 
     sphere['x'] = x
     sphere['y'] = y

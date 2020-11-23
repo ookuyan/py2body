@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
-__all__ = ['sun', 'earth', 'moon', 'jupiter', 'ecc_anomaly', 'eci2perif']
+__all__ = ['sun', 'earth', 'moon', 'jupiter',
+           'ecc_anomaly', 'eci2perif', 'elem2rv']
 
 from numpy import sin, cos, tan, arctan, sqrt, array
+from numpy import deg2rad, pi, transpose, dot
 
 # https://nssdc.gsfc.nasa.gov/planetary/planetfact.html
 
@@ -81,3 +83,28 @@ def eci2perif(lan, aop, i):
     ]
 
     return array([u, v, w])
+
+
+def elem2rv(elements, mu=earth['mu']):
+    a, e = elements['a'], elements['e']
+    i = deg2rad(elements['i'])
+    ta = deg2rad(elements['true_anomaly'])
+    aop = deg2rad(elements['argument_of_periapsis'])
+    lan = deg2rad(elements['longitude_of_ascending_node'])
+
+    E = ecc_anomaly([ta, e], 'tae')
+
+    r_norm = a * (1 - e ** 2) / (1 + e * cos(ta))
+
+    r_perif = r_norm * array([cos(ta), sin(ta), 0])
+    v_perif = sqrt(mu * a) / r_norm
+    v_perif *= array([-sin(E), cos(E) * sqrt(1 - e ** 2), 0])
+
+    perif2eci = transpose(eci2perif(lan, aop, i))
+
+    position = dot(perif2eci, r_perif).tolist()
+    velocity = dot(perif2eci, v_perif).tolist()
+
+    period = 2 * pi * sqrt(a ** 3 / mu)
+
+    return position, velocity, period
