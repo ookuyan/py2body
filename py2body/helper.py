@@ -64,7 +64,7 @@ def ecc_anomaly(arr, method, eps=1e-8, max_iter=100):
     # tae
     ta, e = arr
 
-    return 2 * arctan(sqrt((1 - e) / (1 + e)) * tan(ta / 2))
+    return 2 * arctan(sqrt((1 + e) / (1 - e)) * tan(ta / 2))
 
 
 def true_anomaly(arr):
