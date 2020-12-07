@@ -34,7 +34,7 @@ class Body(object):
 
         if 'tle' in args:
             self.tle = args['tle']
-            self.elements = tle2elem(self.tle, self.mu)
+            self.elements = tle2elem(self.tle)
 
             self.position, self.velocity, self.period = \
                 elem2rv(elements=self.elements, mu=self.mu)
@@ -64,12 +64,14 @@ class Body(object):
 
 class Orbit(object):
 
-    def __init__(self, body, mu=None, dt=60, n_steps=100, integrator='lsoda'):
+    def __init__(self, body, center=None, dt=60, n_steps=100, integrator='lsoda'):
         self.body = body
-        self.mu = mu
+        self.center = center
 
-        if mu is None:
-            self.mu = body.mu
+        if center is None:
+            self.center = earth
+
+        self.mu = self.center['mu']
 
         self.dt = dt
         self.step = 0
@@ -90,12 +92,37 @@ class Orbit(object):
         self.vy = None
         self.vz = None
 
+        self.perturbations = {
+            'J2': False, 'drag': False, 'srp': False,
+            'sun': False, 'moon': False, 'jupiter': False
+        }
+
+    def set_perturbation(self, **args):
+        for key, val in args.items():
+            if key in self.perturbations:
+                self.perturbations[key] = val
+
     def f(self, t, y):
         rx, ry, rz, vx, vy, vz = y
         r = np.array([rx, ry, rz])
 
-        n_r = np.linalg.norm(r)
-        ax, ay, az = -r * self.mu / n_r**3
+        norm_r = np.linalg.norm(r)
+        a = -r * self.mu / norm_r ** 3
+
+        if self.perturbations['J2']:
+            z2 = r[2] ** 2
+            r2 = norm_r ** 2
+            tx = r[0] / norm_r * (5 * z2 / r2 - 1)
+            ty = r[1] / norm_r * (5 * z2 / r2 - 1)
+            tz = r[2] / norm_r * (5 * z2 / r2 - 3)
+
+            a_j2 = 1.5 * self.center['J2'] * self.mu * \
+                self.center['radius']**2 / norm_r**4 * \
+                np.array([tx, ty, tz])
+
+            a += a_j2
+
+        ax, ay, az = a
 
         return [vx, vy, vz, ax, ay, az]
 

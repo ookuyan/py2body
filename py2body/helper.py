@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-__all__ = ['sun', 'earth', 'moon', 'jupiter', 'ecc_anomaly',
+__all__ = ['sun', 'earth', 'moon', 'jupiter', 'true_anomaly',
            'eci2perif', 'elem2rv', 'tle2elem']
 
 import datetime
 
-from numpy import sin, cos, tan, arctan, sqrt, array
+from numpy import sin, cos, tan, arctan, arctan2, sqrt, array
 from numpy import deg2rad, rad2deg, pi, transpose, dot
 
 # https://nssdc.gsfc.nasa.gov/planetary/planetfact.html
@@ -22,6 +22,7 @@ earth = {
     'mass': 5.972e24,
     'radius': 6378.0,
     'mu': 0.39860e6,
+    'J2': -1.082635854e-3
 }
 
 moon = {
@@ -39,11 +40,11 @@ jupiter = {
 }
 
 
-def kepler(mean_anomaly, e, eps=1e-8, max_iter=100):
-    u1 = mean_anomaly
+def ecc_anomaly(e, M, eps=1e-8, max_iter=100):
+    u1 = M
 
     for _ in range(max_iter):
-        u2 = u1 - ((u1 - e * sin(u1) - mean_anomaly) / (1 - e * cos(u1)))
+        u2 = u1 - ((u1 - e * sin(u1) - M) / (1 - e * cos(u1)))
 
         if abs(u2 - u1) < eps:
             break
@@ -55,21 +56,8 @@ def kepler(mean_anomaly, e, eps=1e-8, max_iter=100):
     return u2
 
 
-def ecc_anomaly(arr, method, eps=1e-8, max_iter=100):
-    if method == 'newton':
-        Me, e = arr
-
-        return kepler(Me, e, eps=eps, max_iter=max_iter)
-
-    # tae
-    ta, e = arr
-
-    return 2 * arctan(sqrt((1 + e) / (1 - e)) * tan(ta / 2))
-
-
-def true_anomaly(arr):
-    E, e = arr
-    return 2 * arctan(sqrt((1 + e) / (1 - e)) * tan(E / 2))
+def true_anomaly(e, E):
+    return 2 * arctan2(sqrt(1 + e) * sin(E / 2), sqrt(1 + e) * cos(E / 2))
 
 
 def eci2perif(lan, aop, i):
@@ -95,14 +83,13 @@ def eci2perif(lan, aop, i):
 def elem2rv(elements, mu=earth['mu']):
     a, e = elements['a'], elements['e']
     i = deg2rad(elements['i'])
-    ta = deg2rad(elements['true_anomaly'])
     aop = deg2rad(elements['argument_of_periapsis'])
     lan = deg2rad(elements['longitude_of_ascending_node'])
 
-    E = ecc_anomaly([ta, e], 'tae')
+    E = ecc_anomaly(e=e, M=elements['mean_anomaly'])
+    ta = true_anomaly(e=e, E=E)
 
-    r_norm = a * (1 - e ** 2) / (1 + e * cos(ta))
-
+    r_norm = a * (1 - e * cos(E))
     r_perif = r_norm * array([cos(ta), sin(ta), 0])
     v_perif = sqrt(mu * a) / r_norm
     v_perif *= array([-sin(E), cos(E) * sqrt(1 - e ** 2), 0])
@@ -126,13 +113,13 @@ def calc_epoch(epoch, year_prefix='20'):
     hour = float('0.' + epoch[1]) * 24.0
     date = datetime.date(year, 1, 1) + datetime.timedelta(day_of_year)
 
-    month = float(date.month)
-    day = float(date.day)
+    month = int(date.month)
+    day = int(date.day)
 
     return year, month, day, hour
 
 
-def tle2elem(tle, mu=earth['mu']):
+def tle2elem(tle):
     line0, line1, line2 = tle
 
     line0 = line0.strip()
@@ -156,7 +143,7 @@ def tle2elem(tle, mu=earth['mu']):
     aop = float(line2[5])
 
     # mean anomaly
-    ma = deg2rad(float(line2[6]))
+    M = float(line2[6])
 
     # mean motion [revs / day]
     mean_motion = float(line2[7])
@@ -165,16 +152,13 @@ def tle2elem(tle, mu=earth['mu']):
     period = 1 / mean_motion * 86400
 
     # semi major axis
-    a = (period**2 * mu / 4.0 / pi**2) ** (1 / 3)
+    a = (period**2 * earth['mu'] / 4.0 / pi**2) ** (1 / 3)
 
     # eccentric anomaly
-    E = ecc_anomaly([ma, e], 'newton')
+    E = ecc_anomaly(e, deg2rad(M))
 
     # true anomaly
-    ta = true_anomaly([E, e])
-
-    # magnitude of radius vector
-    # r_mag = a * (1 - e * cos(E))
+    ta = true_anomaly(E, e)
 
     elements = dict()
     elements['name'] = line0
@@ -182,6 +166,7 @@ def tle2elem(tle, mu=earth['mu']):
     elements['e'] = e
     elements['i'] = i
     elements['true_anomaly'] = rad2deg(ta)
+    elements['mean_anomaly'] = M
     elements['argument_of_periapsis'] = aop
     elements['longitude_of_ascending_node'] = lan
     elements['period'] = period
