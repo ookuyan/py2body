@@ -78,7 +78,7 @@ def create_sphere(ax, radius=1, position=None, texture='wire_frame',
         sphere['texture'] = img
 
         ax.plot_surface(x, y, z, rstride=rstride, cstride=cstride,
-                        alpha=texture_alpha, facecolors=img)
+                        alpha=texture_alpha, facecolors=img, zorder=0)
     else:
         phi, theta = np.mgrid[0.0:np.pi:32j, 0.0:2.0*np.pi:32j]
 
@@ -87,9 +87,11 @@ def create_sphere(ax, radius=1, position=None, texture='wire_frame',
         z = radius * np.cos(phi)
 
         if texture == 'wire_frame':
-            ax.plot_wireframe(x, y, z, cmap=color, alpha=texture_alpha)
+            ax.plot_wireframe(x, y, z, cmap=color,
+                              alpha=texture_alpha, zorder=0)
         else:
-            ax.plot_surface(x, y, z, cmap=color, alpha=texture_alpha)
+            ax.plot_surface(x, y, z, cmap=color,
+                            alpha=texture_alpha, zorder=0)
 
     if quiver:
         r = 2 * radius
@@ -142,8 +144,8 @@ def plot_orbit(orbs, draw_sphere=False, sphere_radius=6378, fig_size=(8, 8),
         if tmp_lim > lim:
             lim = tmp_lim
 
-        p, = ax.plot(x, y, z, color=colors[i], lw=1)
-        ax.plot(x[0:1], y[0:1], z[0:1], 'ko', ms=5)
+        p, = ax.plot(x, y, z, color=colors[i], lw=1, zorder=10)
+        ax.plot(x[0:1], y[0:1], z[0:1], 'ko', ms=5, zorder=10)
 
         legend_handles.append(p)
         legend_names.append(orb.body.name)

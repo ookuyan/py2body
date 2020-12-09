@@ -13,7 +13,7 @@ class Body(object):
     def __init__(self, **args):
         self.name = 'Satellite'
         self.mu = earth['mu']
-        self.mass = 0.0
+        self.mass = 100.0
 
         self.position = None
         self.velocity = None
@@ -22,6 +22,9 @@ class Body(object):
         self.period = None
 
         self.tle = None
+
+        self.Cd = 2.2
+        self.area = 1e-3**2 / 4
 
         if 'name' in args:
             self.name = args['name']
@@ -61,16 +64,20 @@ class Body(object):
                 v_mag = np.sqrt(self.mu / self.position[0])  # circular
                 self.velocity = [0, v_mag, 0]
 
+        if 'Cd' in args:
+            self.Cd = args['Cd']
+
+        if 'area' in args:
+            self.A = args['area']
+
 
 class Orbit(object):
 
-    def __init__(self, body, center=None, dt=60, n_steps=100, integrator='lsoda'):
+    def __init__(self, body, center=earth, dt=60,
+                 n_steps=100, integrator='dop853'):  # lsoda
+
         self.body = body
         self.center = center
-
-        if center is None:
-            self.center = earth
-
         self.mu = self.center['mu']
 
         self.dt = dt
@@ -92,12 +99,14 @@ class Orbit(object):
         self.vy = None
         self.vz = None
 
+        self.elements = None
+
         self.perturbations = {
-            'J2': False, 'drag': False, 'srp': False,
+            'j2': False, 'drag': False, 'srp': False,
             'sun': False, 'moon': False, 'jupiter': False
         }
 
-    def set_perturbation(self, **args):
+    def set_perturbations(self, **args):
         for key, val in args.items():
             if key in self.perturbations:
                 self.perturbations[key] = val
@@ -105,28 +114,41 @@ class Orbit(object):
     def f(self, t, y):
         rx, ry, rz, vx, vy, vz = y
         r = np.array([rx, ry, rz])
+        v = np.array([vx, vy, vz])
 
         norm_r = np.linalg.norm(r)
         a = -r * self.mu / norm_r ** 3
 
-        if self.perturbations['J2']:
+        if self.perturbations['j2']:
             z2 = r[2] ** 2
             r2 = norm_r ** 2
             tx = r[0] / norm_r * (5 * z2 / r2 - 1)
             ty = r[1] / norm_r * (5 * z2 / r2 - 1)
             tz = r[2] / norm_r * (5 * z2 / r2 - 3)
 
-            a_j2 = 1.5 * self.center['J2'] * self.mu * \
+            a_j2 = 1.5 * self.center['j2'] * self.mu * \
                 self.center['radius']**2 / norm_r**4 * \
                 np.array([tx, ty, tz])
 
             a += a_j2
+
+        if self.perturbations['drag']:
+            z = norm_r - self.center['radius']
+            rho = calc_atmospheric_density(z, self.center)
+
+            v_rel = v - np.cross(self.center['atm']['rot_vector'], r)
+            drag = -v_rel * 0.5 * rho * np.linalg.norm(v_rel) *\
+                self.body.Cd * self.body.area / self.body.mass
+
+            a += drag
 
         ax, ay, az = a
 
         return [vx, vy, vz, ax, ay, az]
 
     def propagate(self):
+        self.step = 0
+        self.elements = list()
         self.ts = np.zeros((self.n_steps, 1))
         self.ys = np.zeros((self.n_steps, 6))
 
@@ -141,6 +163,11 @@ class Orbit(object):
             self.ts[self.step] = self.solver.t
             self.ys[self.step] = self.solver.y
 
+            self.elements.append(
+                rv2elem(self.ys[self.step][:3], self.ys[self.step][3:],
+                        mu=self.center['mu']))
+
             self.step += 1
 
         self.x, self.y, self.z = self.ys[:, 0], self.ys[:, 1], self.ys[:, 2]
+        self.vx, self.vy, self.vz = self.ys[:, 3], self.ys[:, 4], self.ys[:, 5]
