@@ -21,6 +21,8 @@ class Body(object):
         self.elements = None
         self.period = None
 
+        self.epoch = T.now()
+
         self.tle = None
 
         self.Cd = 2.2
@@ -35,6 +37,9 @@ class Body(object):
         if 'mass' in args:
             self.mass = args['mass']
 
+        if 'epoch' in args:
+            self.epoch = args['epoch']
+
         if 'tle' in args:
             self.tle = args['tle']
             self.elements = tle2elem(self.tle)
@@ -43,6 +48,7 @@ class Body(object):
                 elem2rv(elements=self.elements, mu=self.mu)
 
             self.name = self.elements['name']
+            self.epoch = self.elements['epoch']
 
         if 'elements' in args:
             self.position, self.velocity, self.period = \
@@ -73,8 +79,8 @@ class Body(object):
 
 class Orbit(object):
 
-    def __init__(self, body, center=earth, dt=60,
-                 n_steps=100, integrator='dop853'):  # lsoda
+    def __init__(self, body, center=earth, dt=60, n_steps=100,
+                 integrator='dop853'):  # lsoda
 
         self.body = body
         self.center = center
@@ -87,6 +93,7 @@ class Orbit(object):
         self.integrator = integrator
 
         self.ts = None
+        self.ts_ = None
         self.ys = None
 
         self.solver = ode(self.f)
@@ -100,6 +107,7 @@ class Orbit(object):
         self.vz = None
 
         self.elements = None
+        self.altitude = None
 
         self.perturbations = {
             'j2': False, 'drag': False, 'srp': False,
@@ -142,13 +150,42 @@ class Orbit(object):
 
             a += drag
 
+        # t_ = T.from_datetimes(
+        #     self.body.epoch.utc_datetime() + timedelta(seconds=t))
+        # cb = self.center['eph']
+
+        # if self.perturbations['sun']:
+        #     tb = sun['eph']
+        #     rs = cb.at(t_).observe(tb).position.km
+        #
+        #     norm_rs = np.linalg.norm(rs)
+        #     a += -rs * sun['mu'] / norm_rs ** 3
+        #
+        # if self.perturbations['moon']:
+        #     tb = moon['eph']
+        #     rm = cb.at(t_).observe(tb).position.km
+        #
+        #     norm_rm = np.linalg.norm(rm)
+        #     a += -rm * moon['mu'] / norm_rm ** 3
+        #
+        # if self.perturbations['jupiter']:
+        #     tb = jupiter['eph']
+        #     rj = cb.at(t_).observe(tb).position.km
+        #
+        #     norm_rj = np.linalg.norm(rj)
+        #     a += -rj * jupiter['mu'] / norm_rj ** 3
+
         ax, ay, az = a
+
+        # self.ts_.append(t_)
 
         return [vx, vy, vz, ax, ay, az]
 
     def propagate(self):
         self.step = 0
         self.elements = list()
+        self.altitude = list()
+        self.ts_ = list()
         self.ts = np.zeros((self.n_steps, 1))
         self.ys = np.zeros((self.n_steps, 6))
 
@@ -167,7 +204,12 @@ class Orbit(object):
                 rv2elem(self.ys[self.step][:3], self.ys[self.step][3:],
                         mu=self.center['mu']))
 
+            self.altitude.append(
+                np.linalg.norm(self.ys[self.step][:3]) - self.center['radius'])
+
             self.step += 1
 
         self.x, self.y, self.z = self.ys[:, 0], self.ys[:, 1], self.ys[:, 2]
         self.vx, self.vy, self.vz = self.ys[:, 3], self.ys[:, 4], self.ys[:, 5]
+
+        self.altitude = np.array(self.altitude)

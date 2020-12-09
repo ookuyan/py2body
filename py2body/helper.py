@@ -1,13 +1,27 @@
 #!/usr/bin/env python
 
 __all__ = ['sun', 'earth', 'moon', 'jupiter', 'true_anomaly', 'eci2perif',
-           'elem2rv', 'rv2elem', 'tle2elem', 'calc_atmospheric_density']
+           'elem2rv', 'rv2elem', 'tle2elem', 'calc_atmospheric_density', 'T',
+           'timedelta']
 
+import os
+import pathlib
 import datetime
+from datetime import timedelta
 
 from numpy import sin, cos, arctan2, arccos, deg2rad, rad2deg, pi
 from numpy import log, exp, sqrt, array, transpose, cross, dot
 from numpy.linalg import norm
+
+from skyfield.api import load
+
+kernel_name = 'de421.bsp'
+p = pathlib.Path(__file__).parent.absolute()
+kernel = os.path.join(*p.parts, 'data', kernel_name)
+
+jpl = load(kernel)
+T = load.timescale(builtin=True)
+
 
 # https://nssdc.gsfc.nasa.gov/planetary/planetfact.html
 
@@ -16,6 +30,7 @@ sun = {
     'mass': 1988500e24,
     'radius': 695700.0,
     'mu': 132712e6,
+    'eph': jpl['sun']
 }
 
 earth = {
@@ -29,7 +44,8 @@ earth = {
         'table': array([[63.096, 2.059e-4],
                         [251.189, 5.909e-11],
                         [1000.0, 3.561e-15]])
-    }
+    },
+    'eph': jpl['earth']
 }
 
 moon = {
@@ -37,6 +53,7 @@ moon = {
     'mass': 0.07346e24,
     'radius': 1738.1,
     'mu': 0.00490e6,
+    'eph': jpl['moon']
 }
 
 jupiter = {
@@ -44,6 +61,7 @@ jupiter = {
     'mass': 1898.19e24,
     'radius': 69911,
     'mu': 126.687e6,
+    'eph': jpl['jupiter barycenter']
 }
 
 
@@ -147,7 +165,7 @@ def rv2elem(r, v, mu=earth['mu'], return_dict=False):
     i = arccos(h[2] / h_norm)
 
     # eccentricity vector
-    e = ((norm(v)**2 - mu / r_norm) * r - dot(r, v) * v) / mu
+    e = cross(v, h) / mu - r / r_norm
     e_norm = norm(e)
 
     # node line
@@ -162,12 +180,12 @@ def rv2elem(r, v, mu=earth['mu'], return_dict=False):
     # argument of perigee
     aop = arccos(dot(N, e) / N_norm / e_norm)
     if e[2] < 0:
-        aop -= 2 * pi
+        aop = 2 * pi - aop
 
     # true anomaly
     ta = arccos(dot(e, r) / e_norm / r_norm)
     if dot(r, v) < 0:
-        ta -= 2 * pi
+        ta = 2 * pi - ta
 
     # semi-major axis
     a = r_norm * (1 + e_norm * cos(ta)) / (1 - e_norm**2)
@@ -177,16 +195,17 @@ def rv2elem(r, v, mu=earth['mu'], return_dict=False):
     if return_dict:
         elements = dict()
         elements['a'] = a
-        elements['e'] = e
-        elements['i'] = rad2deg(i)
-        elements['true_anomaly'] = rad2deg(ta)
-        elements['argument_of_periapsis'] = rad2deg(aop)
-        elements['longitude_of_ascending_node'] = rad2deg(lan)
+        elements['e'] = e_norm
+        elements['i'] = rad2deg(i) % 360
+        elements['true_anomaly'] = rad2deg(ta) % 360
+        elements['argument_of_periapsis'] = rad2deg(aop) % 360
+        elements['longitude_of_ascending_node'] = rad2deg(lan) % 360
         elements['period'] = period
 
         return elements
 
-    return [a, e, rad2deg(i), rad2deg(ta), rad2deg(aop), rad2deg(lan), period]
+    return [a, e_norm, rad2deg(i) % 360, rad2deg(ta) % 360,
+            rad2deg(aop) % 360, rad2deg(lan) % 360, period]
 
 
 def calc_epoch(epoch, year_prefix='20'):
@@ -255,6 +274,8 @@ def tle2elem(tle):
     elements['argument_of_periapsis'] = aop
     elements['longitude_of_ascending_node'] = lan
     elements['period'] = period
-    elements['epoch'] = {'year': year, 'month': month, 'day': day, 'hour': hour}
+    # elements['epoch'] = {'year': year, 'month': month,
+    #                      'day': day, 'hour': hour}
+    elements['epoch'] = T.utc(year=year, month=month, day=day, hour=hour)
 
     return elements
