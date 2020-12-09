@@ -108,6 +108,7 @@ class Orbit(object):
 
         self.elements = None
         self.altitude = None
+        self.ssbs = None
 
         self.perturbations = {
             'j2': False, 'drag': False, 'srp': False,
@@ -150,36 +151,64 @@ class Orbit(object):
 
             a += drag
 
-        # t_ = T.from_datetimes(
-        #     self.body.epoch.utc_datetime() + timedelta(seconds=t))
-        # cb = self.center['eph']
+        if self.perturbations['sun']:
+            r_cb2sun = self.ssbs['sun'][self.step]
+            r_sat2sun = r_cb2sun - r
 
-        # if self.perturbations['sun']:
-        #     tb = sun['eph']
-        #     rs = cb.at(t_).observe(tb).position.km
-        #
-        #     norm_rs = np.linalg.norm(rs)
-        #     a += -rs * sun['mu'] / norm_rs ** 3
-        #
-        # if self.perturbations['moon']:
-        #     tb = moon['eph']
-        #     rm = cb.at(t_).observe(tb).position.km
-        #
-        #     norm_rm = np.linalg.norm(rm)
-        #     a += -rm * moon['mu'] / norm_rm ** 3
-        #
-        # if self.perturbations['jupiter']:
-        #     tb = jupiter['eph']
-        #     rj = cb.at(t_).observe(tb).position.km
-        #
-        #     norm_rj = np.linalg.norm(rj)
-        #     a += -rj * jupiter['mu'] / norm_rj ** 3
+            norm_r_sat2sun = np.linalg.norm(r_sat2sun)
+            norm_r_cb2sun = np.linalg.norm(r_cb2sun)
+
+            a += sun['mu'] * (r_sat2sun / norm_r_sat2sun ** 3 -
+                              r_cb2sun / norm_r_cb2sun ** 3)
+
+        if self.perturbations['moon']:
+            r_cb2moon = self.ssbs['moon'][self.step]
+            r_sat2moon = r_cb2moon - r
+
+            norm_r_sat2moon = np.linalg.norm(r_sat2moon)
+            norm_r_cb2moon = np.linalg.norm(r_cb2moon)
+
+            a += moon['mu'] * (r_sat2moon / norm_r_sat2moon ** 3 -
+                               r_cb2moon / norm_r_cb2moon ** 3)
+
+        if self.perturbations['jupiter']:
+            r_cb2jupiter = self.ssbs['jupiter'][self.step]
+            r_sat2jupiter = r_cb2jupiter - r
+
+            norm_r_sat2jupiter = np.linalg.norm(r_sat2jupiter)
+            norm_r_cb2jupiter = np.linalg.norm(r_cb2jupiter)
+
+            a += jupiter['mu'] * (r_sat2jupiter / norm_r_sat2jupiter ** 3 -
+                                  r_cb2jupiter / norm_r_cb2jupiter ** 3)
 
         ax, ay, az = a
 
-        # self.ts_.append(t_)
-
         return [vx, vy, vz, ax, ay, az]
+
+    def calc_ssbs(self):
+        year, month, day, hour, minute, second = self.body.epoch.utc
+        self.ts_ = T.utc(year, month, day, hour, minute,
+                         np.arange(second, self.dt * self.n_steps, self.dt))
+
+        ssbs = dict()
+        cb = self.center['eph']
+
+        if self.perturbations['sun']:
+            tb = sun['eph']
+            rs = cb.at(self.ts_).observe(tb).position.km
+            ssbs['sun'] = rs.transpose()
+
+        if self.perturbations['moon']:
+            tb = moon['eph']
+            rm = cb.at(self.ts_).observe(tb).position.km
+            ssbs['moon'] = rm.transpose()
+
+        if self.perturbations['jupiter']:
+            tb = jupiter['eph']
+            rj = cb.at(self.ts_).observe(tb).position.km
+            ssbs['jupiter'] = rj.transpose()
+
+        self.ssbs = ssbs
 
     def propagate(self):
         self.step = 0
@@ -188,6 +217,8 @@ class Orbit(object):
         self.ts_ = list()
         self.ts = np.zeros((self.n_steps, 1))
         self.ys = np.zeros((self.n_steps, 6))
+
+        self.calc_ssbs()
 
         y0 = self.body.position + self.body.velocity
         self.solver.set_initial_value(y0, 0)
